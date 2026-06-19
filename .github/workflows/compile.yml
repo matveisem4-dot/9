@@ -15,24 +15,31 @@ jobs:
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git
+        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git bzip2 tar
 
     - name: Download and Setup Xenon Toolchain
       run: |
         sudo mkdir -p /usr/local/xenon
-        # Скачиваем официальный тулчейн, где уже есть всё необходимое
-        sudo wget -qO- "https://github.com/Free60Project/libxenon/releases/download/v0.7.1/xenon-toolchain.tar.bz2" | sudo tar -xj -C /usr/local/xenon --strip-components=1
+        # Скачиваем файл отдельно с 3 повторами на случай нестабильного интернета
+        wget --tries=3 --waitretry=5 -O toolchain.tar.bz2 "https://github.com/Free60Project/libxenon/releases/download/v0.7.1/xenon-toolchain.tar.bz2"
+        
+        # Распаковываем уже локально сохраненный целый архив
+        sudo tar -xj -f toolchain.tar.bz2 -C /usr/local/xenon --strip-components=1
+        rm toolchain.tar.bz2
 
     - name: Compile Game and Generate XEX
       run: |
         export PATH=$PATH:/usr/local/xenon/bin
         make
         
-        # Используем встроенный в тулчейн конвертер, проверяя его точное имя
+        # Проверяем точное имя утилиты конвертации и собираем финальный XEX
         if [ -f /usr/local/xenon/bin/xenon-elf2xex ]; then
-          xenon-elf2xex horse_game.elf default.xex
+          /usr/local/xenon/bin/xenon-elf2xex horse_game.elf default.xex
+        elif [ -f /usr/local/xenon/bin/elf2xex ]; then
+          /usr/local/xenon/bin/elf2xex horse_game.elf default.xex
         else
-          elf2xex horse_game.elf default.xex
+          echo "Конвертер XEX не найден!"
+          exit 1
         fi
 
     - name: Upload Finished XEX Game
