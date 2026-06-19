@@ -1,4 +1,4 @@
-name: Xbox 360 Game Build
+name: Xbox 360 Game Build (XEX)
 
 on:
   push:
@@ -12,24 +12,32 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install Dependencies
+    - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git
+        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git zlib1g-dev libssl-dev build-essential
 
     - name: Download and Setup Xenon Toolchain
       run: |
         sudo mkdir -p /usr/local/xenon
-        # Скачиваем готовый облегченный компилятор для Xbox 360
         sudo wget -qO- "https://github.com/Free60Project/libxenon/releases/download/v0.7.1/xenon-toolchain.tar.bz2" | sudo tar -xj -C /usr/local/xenon --strip-components=1 || true
 
-    - name: Build Game ELF
+    - name: Build cxeb (XEX Converter Tool)
+      run: |
+        git clone https://github.com/Free60Project/cxeb.git
+        cd cxeb
+        make
+        sudo cp cxeb /usr/local/bin/
+
+    - name: Compile Game and Generate XEX
       run: |
         export PATH=$PATH:/usr/local/xenon/bin
         make
+        # Превращаем скомпилированный ELF в настоящий XEX
+        cxeb horse_game.elf -o default.xex
 
-    - name: Upload Finished Game
+    - name: Upload Finished XEX Game
       uses: actions/upload-artifact@v4
       with:
-        name: Xbox360-HorseGame
-        path: horse_game.elf
+        name: Xbox360-HorseGame-XEX
+        path: default.xex
