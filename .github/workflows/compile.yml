@@ -22,19 +22,20 @@ jobs:
         sudo mkdir -p /usr/local/xenon
         sudo wget -qO- "https://github.com/Free60Project/libxenon/releases/download/v0.7.1/xenon-toolchain.tar.bz2" | sudo tar -xj -C /usr/local/xenon --strip-components=1 || true
 
-    - name: Build cxeb (XEX Converter Tool)
+    - name: Build elf2xex (XEX Converter Tool)
       run: |
-        git clone https://github.com/Free60Project/cxeb.git
-        cd cxeb
+        # Собираем официальный конвертер прямо из главного репозитория libxenon
+        git clone https://github.com/Free60Project/libxenon.git
+        cd libxenon/tools/elf2xex
         make
-        sudo cp cxeb /usr/local/bin/
+        sudo cp elf2xex /usr/local/bin/
 
     - name: Compile Game and Generate XEX
       run: |
         export PATH=$PATH:/usr/local/xenon/bin
         make
-        # Превращаем скомпилированный ELF в настоящий XEX
-        cxeb horse_game.elf -o default.xex
+        # Превращаем ELF в XEX с помощью надежного elf2xex
+        elf2xex horse_game.elf default.xex
 
     - name: Upload Finished XEX Game
       uses: actions/upload-artifact@v4
