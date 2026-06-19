@@ -19,27 +19,27 @@ jobs:
 
     - name: Download and Setup Xenon Toolchain
       run: |
+        # !!! СЮДА ВСТАВЬ СВОЮ СТАРУЮ СТРОЧКУ СКАЧИВАНИЯ ИЗ ШАГА 1 !!!
+        # Вместо этой строчки вставь то, что у тебя успешно работало в 4-й сборке!
         sudo mkdir -p /usr/local/xenon
-        # Скачиваем файл отдельно с 3 повторами на случай нестабильного интернета
-        wget --tries=3 --waitretry=5 -O toolchain.tar.bz2 "https://github.com/Free60Project/libxenon/releases/download/v0.7.1/xenon-toolchain.tar.bz2"
-        
-        # Распаковываем уже локально сохраненный целый архив
-        sudo tar -xj -f toolchain.tar.bz2 -C /usr/local/xenon --strip-components=1
-        rm toolchain.tar.bz2
+        ВАША_РАБОЧАЯ_КОМАНДА_ИЗ_ИСТОРИИ_ТУТ
 
     - name: Compile Game and Generate XEX
       run: |
         export PATH=$PATH:/usr/local/xenon/bin
         make
         
-        # Проверяем точное имя утилиты конвертации и собираем финальный XEX
+        # Этот блок проверит, где лежит конвертер, и сделает из него XEX
         if [ -f /usr/local/xenon/bin/xenon-elf2xex ]; then
           /usr/local/xenon/bin/xenon-elf2xex horse_game.elf default.xex
         elif [ -f /usr/local/xenon/bin/elf2xex ]; then
           /usr/local/xenon/bin/elf2xex horse_game.elf default.xex
         else
-          echo "Конвертер XEX не найден!"
-          exit 1
+          # Если конвертера в тулчейне нет, мы сделаем его сами за 3 секунды
+          git clone https://github.com/Free60Project/libxenon.git
+          cd libxenon/tools/elf2xex && make && sudo cp elf2xex /usr/local/bin/
+          cd ../../..
+          elf2xex horse_game.elf default.xex
         fi
 
     - name: Upload Finished XEX Game
