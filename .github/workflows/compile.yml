@@ -15,17 +15,17 @@ jobs:
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        # Устанавливаем официальный компилятор PowerPC и библиотеку сжатия zlib
+        # Устанавливаем официальный компилятор PowerPC и библиотеки разработки
         sudo apt-get install -y gcc-powerpc-linux-gnu make wget git zlib1g-dev build-essential
 
     - name: Create and Link Xenon Toolchain
       run: |
-        # Создаем структуру папок, которую ожидает твой Makefile
+        # Создаем структуру папок, которую требует ваш Makefile
         sudo mkdir -p /usr/local/xenon/bin
         sudo mkdir -p /usr/local/xenon/usr/lib
         sudo mkdir -p /usr/local/xenon/usr/include
         
-        # Перенаправляем стандартные утилиты PowerPC в имена инструментов Xbox 360
+        # Настраиваем системные ссылки, маскируя стандартный PowerPC GCC под Xenon
         sudo ln -s /usr/bin/powerpc-linux-gnu-gcc /usr/local/xenon/bin/xenon-gcc
         sudo ln -s /usr/bin/powerpc-linux-gnu-ar /usr/local/xenon/bin/xenon-ar
         sudo ln -s /usr/bin/powerpc-linux-gnu-ld /usr/local/xenon/bin/xenon-ld
@@ -34,28 +34,36 @@ jobs:
 
     - name: Clone and Build LibXenon + Elf2Xex
       run: |
-        # Клонируем официальные исходники библиотек Xbox 360
+        # Клонируем репозиторий с исходниками
         git clone https://github.com/Free60Project/libxenon.git
         
-        # Собираем заголовочные файлы и библиотеки разработчика
-        cd libxenon/libxenon
-        sudo cp -r include/* /usr/local/xenon/usr/include/
+        # Автоматически находим папку include и копируем заголовочные файлы
+        INCLUDE_DIR=$(find libxenon -type d -name "include" | head -n 1)
+        if [ -n "$INCLUDE_DIR" ]; then
+          sudo cp -r "$INCLUDE_DIR"/* /usr/local/xenon/usr/include/
+        fi
         
-        # Собираем официальный конвертер ELF -> XEX из исходников
-        cd ../tools/elf2xex
+        # Умный автопоиск папки elf2xex, чтобы избежать ошибок с "cd"
+        ELF2XEX_DIR=$(find libxenon -type d -name "elf2xex" | head -n 1)
+        if [ -z "$ELF2XEX_DIR" ]; then
+          echo "Ошибка: папка elf2xex не найдена в репозитории!"
+          exit 1
+        fi
+        
+        echo "Конвертер успешно найден по пути: $ELF2XEX_DIR"
+        cd "$ELF2XEX_DIR"
         make
         sudo cp elf2xex /usr/local/bin/
-        cd ../../../
 
     - name: Build Game ELF
       run: |
-        # Добавляем наш новый компилятор в системный путь и запускаем твой Makefile
+        # Добавляем наш компилятор в PATH и собираем игру
         export PATH=$PATH:/usr/local/xenon/bin
         make
 
     - name: Convert ELF to XEX
       run: |
-        # Превращаем скомпилированный файл в формат Xbox 360
+        # Конвертируем получившийся эльф-файл в формат Xbox 360
         elf2xex horse_game.elf default.xex
 
     - name: Upload Finished XEX Game
