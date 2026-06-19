@@ -1,4 +1,4 @@
-name: Xbox 360 Game Build
+name: Xbox 360 Game Build (XEX)
 
 on:
   push:
@@ -12,37 +12,51 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install Dependencies
+    - name: Install System Dependencies
       run: |
         sudo apt-get update
-        # Добавили zlib1g-dev, так как он критически необходим для сборки конвертера XEX
-        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git zlib1g-dev
+        # Устанавливаем официальный компилятор PowerPC и библиотеку сжатия zlib
+        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git zlib1g-dev build-essential
 
-    - name: Download and Setup Xenon Toolchain
+    - name: Create and Link Xenon Toolchain
       run: |
-        sudo mkdir -p /usr/local/xenon
-        # Твой родной шаг, который гарантирует стабильность остального процесса
-        sudo wget -qO- "https://github.com/Free60Project/libxenon/releases/download/v0.7.1/xenon-toolchain.tar.bz2" | sudo tar -xj -C /usr/local/xenon --strip-components=1 || true
+        # Создаем структуру папок, которую ожидает твой Makefile
+        sudo mkdir -p /usr/local/xenon/bin
+        sudo mkdir -p /usr/local/xenon/usr/lib
+        sudo mkdir -p /usr/local/xenon/usr/include
+        
+        # Перенаправляем стандартные утилиты PowerPC в имена инструментов Xbox 360
+        sudo ln -s /usr/bin/powerpc-linux-gnu-gcc /usr/local/xenon/bin/xenon-gcc
+        sudo ln -s /usr/bin/powerpc-linux-gnu-ar /usr/local/xenon/bin/xenon-ar
+        sudo ln -s /usr/bin/powerpc-linux-gnu-ld /usr/local/xenon/bin/xenon-ld
+        sudo ln -s /usr/bin/powerpc-linux-gnu-objcopy /usr/local/xenon/bin/xenon-objcopy
+        sudo ln -s /usr/bin/powerpc-linux-gnu-ranlib /usr/local/xenon/bin/xenon-ranlib
+
+    - name: Clone and Build LibXenon + Elf2Xex
+      run: |
+        # Клонируем официальные исходники библиотек Xbox 360
+        git clone https://github.com/Free60Project/libxenon.git
+        
+        # Собираем заголовочные файлы и библиотеки разработчика
+        cd libxenon/libxenon
+        sudo cp -r include/* /usr/local/xenon/usr/include/
+        
+        # Собираем официальный конвертер ELF -> XEX из исходников
+        cd ../tools/elf2xex
+        make
+        sudo cp elf2xex /usr/local/bin/
+        cd ../../../
 
     - name: Build Game ELF
       run: |
+        # Добавляем наш новый компилятор в системный путь и запускаем твой Makefile
         export PATH=$PATH:/usr/local/xenon/bin
         make
 
-    - name: Build elf2xex and Generate XEX
+    - name: Convert ELF to XEX
       run: |
-        # Клонируем основной репозиторий libxenon (он на 100% открыт и доступен)
-        git clone https://github.com/Free60Project/libxenon.git
-        
-        # Заходим в папку с исходным кодом конвертера и компилируем его локально
-        cd libxenon/tools/elf2xex
-        make
-        
-        # Возвращаемся в корневую папку нашего проекта
-        cd ../../../
-        
-        # Превращаем скомпилированный horse_game.elf в готовый default.xex
-        ./libxenon/tools/elf2xex/elf2xex horse_game.elf default.xex
+        # Превращаем скомпилированный файл в формат Xbox 360
+        elf2xex horse_game.elf default.xex
 
     - name: Upload Finished XEX Game
       uses: actions/upload-artifact@v4
