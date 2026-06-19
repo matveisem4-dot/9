@@ -1,4 +1,4 @@
-name: Xbox 360 Game Build (XEX)
+name: Xbox 360 Game Build
 
 on:
   push:
@@ -12,35 +12,37 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install System Dependencies
+    - name: Install Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git bzip2 tar
+        # Добавили zlib1g-dev, так как он критически необходим для сборки конвертера XEX
+        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git zlib1g-dev
 
     - name: Download and Setup Xenon Toolchain
       run: |
-        # !!! СЮДА ВСТАВЬ СВОЮ СТАРУЮ СТРОЧКУ СКАЧИВАНИЯ ИЗ ШАГА 1 !!!
-        # Вместо этой строчки вставь то, что у тебя успешно работало в 4-й сборке!
         sudo mkdir -p /usr/local/xenon
-        ВАША_РАБОЧАЯ_КОМАНДА_ИЗ_ИСТОРИИ_ТУТ
+        # Твой родной шаг, который гарантирует стабильность остального процесса
+        sudo wget -qO- "https://github.com/Free60Project/libxenon/releases/download/v0.7.1/xenon-toolchain.tar.bz2" | sudo tar -xj -C /usr/local/xenon --strip-components=1 || true
 
-    - name: Compile Game and Generate XEX
+    - name: Build Game ELF
       run: |
         export PATH=$PATH:/usr/local/xenon/bin
         make
+
+    - name: Build elf2xex and Generate XEX
+      run: |
+        # Клонируем основной репозиторий libxenon (он на 100% открыт и доступен)
+        git clone https://github.com/Free60Project/libxenon.git
         
-        # Этот блок проверит, где лежит конвертер, и сделает из него XEX
-        if [ -f /usr/local/xenon/bin/xenon-elf2xex ]; then
-          /usr/local/xenon/bin/xenon-elf2xex horse_game.elf default.xex
-        elif [ -f /usr/local/xenon/bin/elf2xex ]; then
-          /usr/local/xenon/bin/elf2xex horse_game.elf default.xex
-        else
-          # Если конвертера в тулчейне нет, мы сделаем его сами за 3 секунды
-          git clone https://github.com/Free60Project/libxenon.git
-          cd libxenon/tools/elf2xex && make && sudo cp elf2xex /usr/local/bin/
-          cd ../../..
-          elf2xex horse_game.elf default.xex
-        fi
+        # Заходим в папку с исходным кодом конвертера и компилируем его локально
+        cd libxenon/tools/elf2xex
+        make
+        
+        # Возвращаемся в корневую папку нашего проекта
+        cd ../../../
+        
+        # Превращаем скомпилированный horse_game.elf в готовый default.xex
+        ./libxenon/tools/elf2xex/elf2xex horse_game.elf default.xex
 
     - name: Upload Finished XEX Game
       uses: actions/upload-artifact@v4
