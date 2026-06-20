@@ -1,4 +1,4 @@
-name: Xbox 360 Game Build
+name: Instant Build
 
 on:
   push:
@@ -7,48 +7,21 @@ on:
 
 jobs:
   build:
+    # Используем готовый Docker-образ, где всё уже установлено
+    container:
+      image: ghcr.io/libxenon-project/libxenon-toolchain:latest
+    
     runs-on: ubuntu-latest
+    
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 1. Пытаемся достать готовый toolchain
-    - name: Cache Xenon Toolchain
-      id: cache-xenon
-      uses: actions/cache@v4
-      with:
-        path: /usr/local/xenon
-        key: xenon-full-v2
-
-    # 2. Собираем только если кэша нет
-    - name: Build Toolchain (Only if cache miss)
-      if: steps.cache-xenon.outputs.cache-hit != 'true'
-      run: |
-        sudo apt-get update && sudo apt-get install -y build-essential git wget tar bzip2 texinfo bison flex libgmp-dev libmpfr-dev libmpc-dev zlib1g-dev
-        git clone https://github.com/Free60Project/libxenon.git
-        cd libxenon/toolchain
-        sudo mkdir -p /usr/local/xenon
-        sudo chown -R $USER /usr/local/xenon
-        ./build-xenon-toolchain.sh toolchain
-
-    # 3. Настройка окружения
-    - name: Setup Path
-      run: echo "/usr/local/xenon/bin" >> $GITHUB_PATH
-
-    # 4. Поиск elf2xex (используем то, что уже есть, или собираем один раз)
-    - name: Build elf2xex
-      run: |
-        if [ ! -f /usr/local/xenon/bin/elf2xex ]; then
-          git clone --depth 1 https://github.com/Free60Project/tools.git
-          cd tools/elf2xex
-          make
-          cp elf2xex /usr/local/xenon/bin/
-        fi
-
-    # 5. Сборка игры
     - name: Build Game
       run: |
+        # Здесь мы не собираем компилятор, он уже есть внутри образа
         make
+        # elf2xex уже лежит в системе внутри этого контейнера
         elf2xex horse_game.elf default.xex
 
     - name: Upload
