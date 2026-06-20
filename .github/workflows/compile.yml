@@ -33,17 +33,33 @@ jobs:
         git clone https://github.com/Free60Project/libxenon.git
         cd libxenon/toolchain
         
+        echo "=== Содержимое папки toolchain ==="
+        ls -la
+        
+        # Динамически находим скрипт сборки, даже если у него другое расширение или имя
+        SCRIPT=$(find . -maxdepth 1 -type f \( -name "*.sh" -o -name "build*" \) | head -n 1)
+        if [ -z "$SCRIPT" ]; then
+          echo "Ошибка: Скрипт сборки не найден в папке toolchain!"
+          exit 1
+        fi
+        echo "Определен скрипт сборщика: $SCRIPT"
+        
+        # Вычищаем Windows-символы возврата каретки (\r), которые ломают запуск в Linux
+        sed -i 's/\r$//' "$SCRIPT"
+        chmod +x "$SCRIPT"
+        
         # Задаем официальную переменную окружения, которую требуют скрипты
         export XENON=/usr/local/xenon
         sudo mkdir -p $XENON
         # Передаем права текущему пользователю, чтобы собрать компилятор без sudo-ошибок
         sudo chown -R $USER:$GROUPS $XENON
         
-        # Запускаем официальный скрипт компиляции компилятора Xbox 360
-        ./build-toolchain.sh
+        # Запускаем найденный и исправленный скрипт компиляции
+        "$SCRIPT"
         
         # Сразу же собираем конвертер elf2xex из родных исходников
         cd ../tools/elf2xex
+        find . -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
         make
         cp elf2xex /usr/local/xenon/bin/
 
