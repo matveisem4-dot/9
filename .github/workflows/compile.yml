@@ -20,14 +20,14 @@ jobs:
         key: ${{ runner.os }}-xenon-toolchain-v2
 
     - name: Install Toolchain Build Dependencies
-      if: steps:cache-toolchain.outputs.cache-hit != 'true'
+      if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: |
         sudo apt-get update
         # Устанавливаем полный пакет утилит, необходимый для компиляции GCC и Newlib
         sudo apt-get install -y build-essential git wget tar bzip2 texinfo bison flex libgmp-dev libmpfr-dev libmpc-dev zlib1g-dev
 
     - name: Build Official Xenon Toolchain from Source
-      if: steps:cache-toolchain.outputs.cache-hit != 'true'
+      if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: |
         # Клонируем исходный код проекта
         git clone https://github.com/Free60Project/libxenon.git
