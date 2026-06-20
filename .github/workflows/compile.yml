@@ -1,4 +1,4 @@
-name: Xbox 360 Game Build (XEX)
+name: Xbox 360 Game Build (True Toolchain)
 
 on:
   push:
@@ -12,58 +12,58 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Install System Dependencies
+    - name: Cache Xenon Toolchain
+      id: cache-toolchain
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/xenon
+        key: ${{ runner.os }}-xenon-toolchain-v2
+
+    - name: Install Toolchain Build Dependencies
+      if: steps:cache-toolchain.outputs.cache-hit != 'true'
       run: |
         sudo apt-get update
-        # Устанавливаем официальный компилятор PowerPC и библиотеки разработки
-        sudo apt-get install -y gcc-powerpc-linux-gnu make wget git zlib1g-dev build-essential
+        # Устанавливаем полный пакет утилит, необходимый для компиляции GCC и Newlib
+        sudo apt-get install -y build-essential git wget tar bzip2 texinfo bison flex libgmp-dev libmpfr-dev libmpc-dev zlib1g-dev
 
-    - name: Create and Link Xenon Toolchain
+    - name: Build Official Xenon Toolchain from Source
+      if: steps:cache-toolchain.outputs.cache-hit != 'true'
       run: |
-        # Создаем структуру папок, которую требует ваш Makefile
-        sudo mkdir -p /usr/local/xenon/bin
-        sudo mkdir -p /usr/local/xenon/usr/lib
-        sudo mkdir -p /usr/local/xenon/usr/include
-        
-        # Настраиваем системные ссылки, маскируя стандартный PowerPC GCC под Xenon
-        sudo ln -s /usr/bin/powerpc-linux-gnu-gcc /usr/local/xenon/bin/xenon-gcc
-        sudo ln -s /usr/bin/powerpc-linux-gnu-ar /usr/local/xenon/bin/xenon-ar
-        sudo ln -s /usr/bin/powerpc-linux-gnu-ld /usr/local/xenon/bin/xenon-ld
-        sudo ln -s /usr/bin/powerpc-linux-gnu-objcopy /usr/local/xenon/bin/xenon-objcopy
-        sudo ln -s /usr/bin/powerpc-linux-gnu-ranlib /usr/local/xenon/bin/xenon-ranlib
-
-    - name: Clone and Build LibXenon + Elf2Xex
-      run: |
-        # Клонируем репозиторий с исходниками
+        # Клонируем исходный код проекта
         git clone https://github.com/Free60Project/libxenon.git
+        cd libxenon/toolchain
         
-        # Автоматически находим папку include и копируем заголовочные файлы
-        INCLUDE_DIR=$(find libxenon -type d -name "include" | head -n 1)
-        if [ -n "$INCLUDE_DIR" ]; then
-          sudo cp -r "$INCLUDE_DIR"/* /usr/local/xenon/usr/include/
-        fi
+        # Задаем официальную переменную окружения, которую требуют скрипты
+        export XENON=/usr/local/xenon
+        sudo mkdir -p $XENON
+        # Передаем права текущему пользователю, чтобы собрать компилятор без sudo-ошибок
+        sudo chown -R $USER:$GROUPS $XENON
         
-        # Умный автопоиск папки elf2xex, чтобы избежать ошибок с "cd"
-        ELF2XEX_DIR=$(find libxenon -type d -name "elf2xex" | head -n 1)
-        if [ -z "$ELF2XEX_DIR" ]; then
-          echo "Ошибка: папка elf2xex не найдена в репозитории!"
-          exit 1
-        fi
+        # Запускаем официальный скрипт компиляции компилятора Xbox 360
+        ./build-toolchain.sh
         
-        echo "Конвертер успешно найден по пути: $ELF2XEX_DIR"
-        cd "$ELF2XEX_DIR"
+        # Сразу же собираем конвертер elf2xex из родных исходников
+        cd ../tools/elf2xex
         make
-        sudo cp elf2xex /usr/local/bin/
+        cp elf2xex /usr/local/xenon/bin/
+
+    - name: Prepare Environment
+      run: |
+        # Делаем скомпилированный elf2xex доступным глобально в системе
+        sudo ln -sf /usr/local/xenon/bin/elf2xex /usr/local/bin/elf2xex
 
     - name: Build Game ELF
       run: |
-        # Добавляем наш компилятор в PATH и собираем игру
-        export PATH=$PATH:/usr/local/xenon/bin
+        # Подключаем наш настоящий bare-metal компилятор Xbox 360
+        export XENON=/usr/local/xenon
+        export PATH=$PATH:$XENON/bin
+        
+        # Собираем саму игру
         make
 
     - name: Convert ELF to XEX
       run: |
-        # Конвертируем получившийся эльф-файл в формат Xbox 360
+        # Конвертируем чистый бинарник в финальный формат Xbox 360 Executable
         elf2xex horse_game.elf default.xex
 
     - name: Upload Finished XEX Game
