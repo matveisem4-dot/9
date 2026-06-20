@@ -17,7 +17,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /usr/local/xenon
-        key: ${{ runner.os }}-xenon-toolchain-light-v3
+        key: ${{ runner.os }}-xenon-toolchain-light-v4
 
     - name: Install Toolchain Build Dependencies
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -45,35 +45,54 @@ jobs:
         sudo chown -R $USER:$GROUPS $XENON
         export PATH=$PATH:$XENON/bin
         
-        # 1. Собираем сам компилятор (GCC, Binutils, Newlib) — этот шаг теперь работает стабильно
+        # 1. Собираем сам компилятор (GCC, Binutils, Newlib)
         echo "=== Запуск сборки Toolchain ==="
         if ! "$SCRIPT" toolchain; then
           echo "❌ Ошибка при сборке toolchain!"
           exit 1
         fi
         
-        # Шаг "libs" сознательно пропускаем во избежание проблем со скачиванием
+        # Шаг "libs" сознательно пропускаем во избежание проблем со скачиванием сторонних архивов
         echo "=== Пропускаем сборку сторонних библиотек для стабильности ==="
         
-        # 2. Клонируем и собираем выделенный конвертер elf2xex из официального репозитория
+        # 2. Клонируем и собираем выделенный конвертер elf2xex из альтернативных живых репозиториев
         echo "=== Сборка конвертера elf2xex ==="
         cd "$ROOT_DIR"
-        git clone https://github.com/Free60Project/elf2xex.git
-        cd elf2xex
         
-        # Компилируем утилиту (через Makefile, либо напрямую слинковав с системным zlib)
-        if [ -f Makefile ] || [ -f makefile ]; then
-          make
-        else
-          gcc -O2 *.c -o elf2xex -lz 2>/dev/null || g++ -O2 *.cpp -o elf2xex -lz
-        fi
+        # Список проверенных публичных форков elf2xex от разработчиков сцены
+        git_urls=(
+          "https://github.com/Ced2911/elf2xex.git"
+          "https://github.com/gligli/elf2xex.git"
+        )
         
-        # Проверяем успешность сборки и переносим бинарник в toolchain
-        if [ -f elf2xex ]; then
-          cp elf2xex /usr/local/xenon/bin/
-          echo "✅ Конвертер elf2xex успешно собран и установлен!"
-        else
-          echo "❌ Ошибка: Не удалось скомпилировать elf2xex!"
+        XEX_SUCCESS=0
+        for url in "${git_urls[@]}"; do
+          echo "Пробую клонировать elf2xex из: $url"
+          if git clone --depth 1 "$url" elf2xex_build; then
+            cd elf2xex_build
+            
+            # Пытаемся собрать через Makefile, либо напрямую компилируем все .c файлы
+            if [ -f Makefile ] || [ -f makefile ]; then
+              make && XEX_SUCCESS=1
+            else
+              gcc -O2 *.c -o elf2xex -lz && XEX_SUCCESS=1
+            fi
+            
+            if [ $XEX_SUCCESS -eq 1 ] && [ -f elf2xex ]; then
+              cp elf2xex /usr/local/xenon/bin/
+              echo "✅ Конвертер elf2xex успешно собран и установлен!"
+              cd "$ROOT_DIR"
+              break
+            fi
+            
+            # Если сборка внутри форка не удалась, чистим папку для следующей попытки
+            cd "$ROOT_DIR"
+            rm -rf elf2xex_build
+          fi
+        done
+
+        if [ ! -f /usr/local/xenon/bin/elf2xex ]; then
+          echo "❌ Ошибка: Не удалось раздобыть или скомпилировать elf2xex!"
           exit 1
         fi
 
