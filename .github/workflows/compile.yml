@@ -17,7 +17,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /usr/local/xenon
-        key: ${{ runner.os }}-xenon-toolchain-v6
+        key: ${{ runner.os }}-xenon-toolchain-v7
 
     - name: Install Toolchain Build Dependencies
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -29,15 +29,27 @@ jobs:
     - name: Build Official Xenon Toolchain from Source
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: |
+        # Создаем умную системную обертку для wget, которая перехватит запросы скрипта,
+        # исправит битые ссылки и замаскирует GitHub Actions под обычный браузер.
+        cat << 'EOF' | sudo tee /usr/local/bin/wget
+        #!/bin/bash
+        ARGS=()
+        for arg in "$@"; do
+            # Если скрипт пытается скачать zlib, принудительно перенаправляем на стабильное плоское зеркало
+            if [[ "$arg" == *"zlib.net"* || "$arg" == *"zlib-1.2.11"* ]]; then
+                arg="https://sources.buildroot.net/zlib-1.2.11.tar.gz"
+            fi
+            ARGS+=("$arg")
+        done
+        # Вызываем реальный wget, прикидываясь десктопным Chrome (обход ошибок 415/403)
+        exec /usr/bin/wget --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" "${ARGS[@]}"
+        EOF
+        sudo chmod +x /usr/local/bin/wget
+        
         # Клонируем исходный код проекта
         git clone https://github.com/Free60Project/libxenon.git
         ROOT_DIR=$(pwd)
         cd libxenon/toolchain
-        
-        # Скачиваем оригинальный zlib-1.2.11 из вечного зеркала Buildroot через curl.
-        # Это гарантирует обход блокировок 415/403 и решит проблему 404.
-        echo "=== Скачивание стабильной копии zlib из репозитория Buildroot ==="
-        curl -L "https://sources.buildroot.net/zlib/zlib-1.2.11.tar.gz" -o zlib-1.2.11.tar.gz
         
         # Динамически находим скрипт сборки
         SCRIPT=$(find . -maxdepth 1 -type f \( -name "*.sh" -o -name "build*" \) | head -n 1)
