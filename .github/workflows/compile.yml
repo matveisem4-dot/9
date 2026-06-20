@@ -17,7 +17,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /usr/local/xenon
-        key: ${{ runner.os }}-xenon-toolchain-light-v1
+        key: ${{ runner.os }}-xenon-toolchain-light-v2
 
     - name: Install Toolchain Build Dependencies
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -55,17 +55,19 @@ jobs:
         # Шаг "libs" (zlib, libpng) сознательно пропускаем, чтобы обойти ошибки скачивания файлов
         echo "=== Пропускаем сборку сторонних библиотек для стабильности ==="
         
-        # 2. Собираем конвертер elf2xex (он компилируется под Linux и не зависит от libs Xbox)
+        # 2. Глобальный поиск и сборка конвертера elf2xex
         echo "=== Сборка конвертера elf2xex ==="
-        cd "$ROOT_DIR/libxenon"
-        ELF2XEX_DIR=$(find . -type d -name "elf2xex" | head -n 1)
-        if [ -n "$ELF2XEX_DIR" ]; then
+        ELF2XEX_C=$(find "$ROOT_DIR" -name "elf2xex.c" | head -n 1)
+        
+        if [ -n "$ELF2XEX_C" ]; then
+          ELF2XEX_DIR=$(dirname "$ELF2XEX_C")
+          echo "✅ Исходный код elf2xex найден в папочке: $ELF2XEX_DIR"
           cd "$ELF2XEX_DIR"
           find . -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
           make
           cp elf2xex /usr/local/xenon/bin/
         else
-          echo "❌ Не удалось найти папку elf2xex!"
+          echo "❌ Ошибка: Не удалось обнаружить файл elf2xex.c ни в одном из каталогов!"
           exit 1
         fi
 
