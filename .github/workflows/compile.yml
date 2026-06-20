@@ -17,7 +17,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /usr/local/xenon
-        key: ${{ runner.os }}-xenon-toolchain-v4
+        key: ${{ runner.os }}-xenon-toolchain-v5
 
     - name: Install Toolchain Build Dependencies
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -29,10 +29,18 @@ jobs:
     - name: Build Official Xenon Toolchain from Source
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: |
+        # Настраиваем маскировку wget под обычный браузер, чтобы сервера не отдавали ошибки 415/403
+        echo "user_agent = Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" > ~/.wgetrc
+        
         # Клонируем исходный код проекта
         git clone https://github.com/Free60Project/libxenon.git
         ROOT_DIR=$(pwd)
         cd libxenon/toolchain
+        
+        # Перестраховка: скачиваем zlib напрямую из надежного зеркала инфраструктуры GCC,
+        # так как официальный сайт zlib.net блокирует роботов GitHub Actions
+        echo "=== Предупредительное скачивание стабильного архива zlib ==="
+        wget -q https://gcc.gnu.org/pub/gcc/infrastructure/zlib-1.2.11.tar.gz -O zlib-1.2.11.tar.gz
         
         # Динамически находим скрипт сборки
         SCRIPT=$(find . -maxdepth 1 -type f \( -name "*.sh" -o -name "build*" \) | head -n 1)
@@ -57,7 +65,6 @@ jobs:
         echo "=== Запуск сборки Libraries (libs) ==="
         if ! "$SCRIPT" libs; then
           echo "❌ Сборка библиотек упала! Вывожу скрытый build.log:"
-          # Ищем и выводим лог ошибки, чтобы понять, почему споткнулся libpng
           find . -name "build.log" -exec tail -n 200 {} + 2>/dev/null || true
           exit 1
         fi
