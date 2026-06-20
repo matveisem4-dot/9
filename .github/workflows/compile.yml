@@ -62,7 +62,7 @@ jobs:
     - name: Install Build Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential git jq zlib1g-dev
+        sudo apt-get install -y build-essential git zlib1g-dev
 
     - name: Fetch and Build elf2xex
       run: |
@@ -72,44 +72,48 @@ jobs:
         sudo chown -R $USER:$GROUPS $XENON
         
         if [ ! -f $XENON/bin/elf2xex ]; then
-          echo "=== Массовый поиск elf2xex по GitHub ==="
-          XEX_SUCCESS=0
+          echo "=== Прямое клонирование официальных инструментов ==="
           
-          # Берем 10 самых недавно обновленных репозиториев elf2xex (игнорируя заброшенные)
-          REPO_URLS=$(curl -s -H "Accept: application/vnd.github.v3+json" "https://api.github.com/search/repositories?q=elf2xex&sort=updated" | jq -r '.items[0:10][].clone_url')
+          # Скачиваем напрямую из проверенного источника Free60
+          git clone --depth 1 https://github.com/Free60Project/tools.git free60_tools || true
           
-          for url in $REPO_URLS; do
-            if [ -z "$url" ] || [[ "$url" == "null" ]]; then continue; fi
-            echo "Пробуем стянуть: $url"
-            
-            # Если репозиторий мертв, git clone молча провалится и цикл пойдет дальше
-            if git clone --depth 1 "$url" elf2xex_build 2>/dev/null; then
-              cd elf2xex_build
-              
-              # Умный поиск исходников внутри скачанного репозитория (могут быть в подпапках)
-              SUBDIR=$(find . -type f \( -name "elf2xex.c" -o -name "elf2xex.cpp" \) -exec dirname {} \; | head -n 1)
-              if [ -n "$SUBDIR" ]; then cd "$SUBDIR"; fi
-              
-              if [ -f Makefile ] || [ -f makefile ]; then
-                make && XEX_SUCCESS=1
-              else
-                gcc -O2 *.c -o elf2xex -lz 2>/dev/null || g++ -O2 *.cpp -o elf2xex -lz 2>/dev/null && XEX_SUCCESS=1
-              fi
-              
-              if [ $XEX_SUCCESS -eq 1 ] && [ -f elf2xex ]; then
-                cp elf2xex $XENON/bin/
-                echo "✅ elf2xex успешно добыт из $url!"
-                cd "$GITHUB_WORKSPACE"
-                break
-              fi
-              
-              cd "$GITHUB_WORKSPACE"
-              rm -rf elf2xex_build
+          if [ -d "free60_tools/elf2xex" ]; then
+            cd free60_tools/elf2xex
+            echo "Компилируем elf2xex..."
+            if [ -f Makefile ] || [ -f makefile ]; then
+              make
+            else
+              gcc -O2 *.c -o elf2xex -lz 2>/dev/null || g++ -O2 *.cpp -o elf2xex -lz
             fi
-          done
+            
+            if [ -f elf2xex ]; then
+              cp elf2xex $XENON/bin/
+              echo "✅ elf2xex успешно собран из Free60Project!"
+            fi
+            cd ../../
+          fi
           
+          # Если первый репозиторий не сработал, пробуем зеркало
           if [ ! -f $XENON/bin/elf2xex ]; then
-            echo "❌ Ошибка: Все найденные на GitHub репозитории недоступны или не собираются."
+            echo "Пробуем запасное зеркало..."
+            git clone --depth 1 https://github.com/LibXenonProject/tools.git libxenon_tools || true
+            if [ -d "libxenon_tools/elf2xex" ]; then
+              cd libxenon_tools/elf2xex
+              if [ -f Makefile ] || [ -f makefile ]; then
+                make
+              else
+                gcc -O2 *.c -o elf2xex -lz 2>/dev/null || g++ -O2 *.cpp -o elf2xex -lz
+              fi
+              if [ -f elf2xex ]; then
+                cp elf2xex $XENON/bin/
+                echo "✅ elf2xex успешно собран из зеркала!"
+              fi
+              cd ../../
+            fi
+          fi
+
+          if [ ! -f $XENON/bin/elf2xex ]; then
+            echo "❌ Ошибка: Не удалось скачать и скомпилировать elf2xex ни из одного официального репозитория."
             exit 1
           fi
         else
