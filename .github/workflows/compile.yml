@@ -1,4 +1,4 @@
-name: Fastest Build Ever
+name: Build
 
 on:
   push:
@@ -12,36 +12,15 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Restore Toolchain from Cache
-      id: cache-toolchain
-      uses: actions/cache@v4
-      with:
-        path: /opt/xenon
-        key: xenon-precompiled-v1
-
-    - name: Download & Setup Toolchain (If cache miss)
-      if: steps.cache-toolchain.outputs.cache-hit != 'true'
-      run: |
-        # Скачиваем уже скомпилированный архив с GitHub (вместо сборки GCC)
-        wget -q https://github.com/LibXenonProject/libxenon/releases/download/latest/xenon-toolchain.tar.gz
-        sudo mkdir -p /opt/xenon
-        sudo tar -xzf xenon-toolchain.tar.gz -C /opt/xenon
-        
     - name: Build Game
       run: |
-        # Добавляем готовый компилятор в PATH
-        export PATH=$PATH:/opt/xenon/bin
+        # Добавляем твою папку с компилятором в PATH
+        export PATH=$PATH:$GITHUB_WORKSPACE/toolchain/bin
         
-        # Собираем игру
+        # Запускаем сборку
         make
         
-        # Используем elf2xex (если его нет в архиве, скачиваем один раз)
-        if [ ! -f /opt/xenon/bin/elf2xex ]; then
-            wget https://github.com/LibXenonProject/tools/raw/master/elf2xex/elf2xex
-            chmod +x elf2xex
-            mv elf2xex /opt/xenon/bin/
-        fi
-        
+        # Если elf2xex тоже лежит в папке toolchain/bin, он просто сработает
         elf2xex horse_game.elf default.xex
 
     - name: Upload
