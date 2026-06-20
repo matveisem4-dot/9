@@ -17,13 +17,13 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /usr/local/xenon
-        key: ${{ runner.os }}-xenon-toolchain-v2
+        key: ${{ runner.os }}-xenon-toolchain-v3
 
     - name: Install Toolchain Build Dependencies
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: |
         sudo apt-get update
-        # Устанавливаем полный пакет утилит, необходимый для компиляции GCC и Newlib
+        # Устанавливаем полный пакет утилит, необходимый для компиляции GCC, Newlib и библиотек
         sudo apt-get install -y build-essential git wget tar bzip2 texinfo bison flex libgmp-dev libmpfr-dev libmpc-dev zlib1g-dev
 
     - name: Build Official Xenon Toolchain from Source
@@ -31,50 +31,52 @@ jobs:
       run: |
         # Клонируем исходный код проекта
         git clone https://github.com/Free60Project/libxenon.git
+        ROOT_DIR=$(pwd)
         cd libxenon/toolchain
         
-        echo "=== Содержимое папки toolchain ==="
-        ls -la
-        
-        # Динамически находим скрипт сборки, даже если у него другое расширение или имя
+        # Динамически находим скрипт сборки
         SCRIPT=$(find . -maxdepth 1 -type f \( -name "*.sh" -o -name "build*" \) | head -n 1)
-        if [ -z "$SCRIPT" ]; then
-          echo "Ошибка: Скрипт сборки не найден в папке toolchain!"
-          exit 1
-        fi
-        echo "Определен скрипт сборщика: $SCRIPT"
-        
-        # Вычищаем Windows-символы возврата каретки (\r), которые ломают запуск в Linux
         sed -i 's/\r$//' "$SCRIPT"
         chmod +x "$SCRIPT"
         
-        # Задаем официальную переменную окружения, которую требуют скрипты
+        # Настраиваем системные переменные для компиляции
         export XENON=/usr/local/xenon
         sudo mkdir -p $XENON
-        # Передаем права текущему пользователю, чтобы собрать компилятор без sudo-ошибок
         sudo chown -R $USER:$GROUPS $XENON
+        export PATH=$PATH:$XENON/bin
         
-        # Запускаем найденный и исправленный скрипт компиляции
-        "$SCRIPT"
+        # 1. Собираем сам компилятор (GCC, Binutils, Newlib)
+        "$SCRIPT" toolchain
         
-        # Сразу же собираем конвертер elf2xex из родных исходников
-        cd ../tools/elf2xex
-        find . -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
-        make
-        cp elf2xex /usr/local/xenon/bin/
+        # 2. Собираем базовые библиотеки LibXenon для работы с железом консоли
+        "$SCRIPT" libs
+        
+        # 3. Находим и собираем конвертер elf2xex, где бы он ни лежал
+        cd "$ROOT_DIR/libxenon"
+        ELF2XEX_DIR=$(find . -type d -name "elf2xex" | head -n 1)
+        if [ -n "$ELF2XEX_DIR" ]; then
+          cd "$ELF2XEX_DIR"
+          find . -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+          make
+          cp elf2xex /usr/local/xenon/bin/
+        else
+          echo "Предупреждение: elf2xex не найден вручную, возможно он уже собрался через 'libs'"
+        fi
 
     - name: Prepare Environment
       run: |
-        # Делаем скомпилированный elf2xex доступным глобально в системе
-        sudo ln -sf /usr/local/xenon/bin/elf2xex /usr/local/bin/elf2xex
+        # Гарантируем, что elf2xex доступен в системе глобально
+        if [ -f /usr/local/xenon/bin/elf2xex ]; then
+          sudo ln -sf /usr/local/xenon/bin/elf2xex /usr/local/bin/elf2xex
+        fi
 
     - name: Build Game ELF
       run: |
-        # Подключаем наш настоящий bare-metal компилятор Xbox 360
+        # Подключаем наш честный собранный bare-metal компилятор Xbox 360
         export XENON=/usr/local/xenon
         export PATH=$PATH:$XENON/bin
         
-        # Собираем саму игру
+        # Сборка игры
         make
 
     - name: Convert ELF to XEX
