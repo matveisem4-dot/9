@@ -17,7 +17,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /usr/local/xenon
-        key: ${{ runner.os }}-xenon-toolchain-v3
+        key: ${{ runner.os }}-xenon-toolchain-v4
 
     - name: Install Toolchain Build Dependencies
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -46,10 +46,21 @@ jobs:
         export PATH=$PATH:$XENON/bin
         
         # 1. Собираем сам компилятор (GCC, Binutils, Newlib)
-        "$SCRIPT" toolchain
+        echo "=== Запуск сборки Toolchain ==="
+        if ! "$SCRIPT" toolchain; then
+          echo "❌ Ошибка при сборке toolchain!"
+          find . -name "build.log" -exec tail -n 100 {} + 2>/dev/null || true
+          exit 1
+        fi
         
         # 2. Собираем базовые библиотеки LibXenon для работы с железом консоли
-        "$SCRIPT" libs
+        echo "=== Запуск сборки Libraries (libs) ==="
+        if ! "$SCRIPT" libs; then
+          echo "❌ Сборка библиотек упала! Вывожу скрытый build.log:"
+          # Ищем и выводим лог ошибки, чтобы понять, почему споткнулся libpng
+          find . -name "build.log" -exec tail -n 200 {} + 2>/dev/null || true
+          exit 1
+        fi
         
         # 3. Находим и собираем конвертер elf2xex, где бы он ни лежал
         cd "$ROOT_DIR/libxenon"
@@ -59,8 +70,6 @@ jobs:
           find . -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
           make
           cp elf2xex /usr/local/xenon/bin/
-        else
-          echo "Предупреждение: elf2xex не найден вручную, возможно он уже собрался через 'libs'"
         fi
 
     - name: Prepare Environment
