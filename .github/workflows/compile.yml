@@ -17,30 +17,27 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /usr/local/xenon
-        key: ${{ runner.os }}-xenon-toolchain-v5
+        key: ${{ runner.os }}-xenon-toolchain-v6
 
     - name: Install Toolchain Build Dependencies
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: |
         sudo apt-get update
         # Устанавливаем полный пакет утилит, необходимый для компиляции GCC, Newlib и библиотек
-        sudo apt-get install -y build-essential git wget tar bzip2 texinfo bison flex libgmp-dev libmpfr-dev libmpc-dev zlib1g-dev
+        sudo apt-get install -y build-essential git wget curl tar bzip2 texinfo bison flex libgmp-dev libmpfr-dev libmpc-dev zlib1g-dev
 
     - name: Build Official Xenon Toolchain from Source
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: |
-        # Настраиваем маскировку wget под обычный браузер, чтобы сервера не отдавали ошибки 415/403
-        echo "user_agent = Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" > ~/.wgetrc
-        
         # Клонируем исходный код проекта
         git clone https://github.com/Free60Project/libxenon.git
         ROOT_DIR=$(pwd)
         cd libxenon/toolchain
         
-        # Перестраховка: скачиваем zlib напрямую из надежного зеркала инфраструктуры GCC,
-        # так как официальный сайт zlib.net блокирует роботов GitHub Actions
-        echo "=== Предупредительное скачивание стабильного архива zlib ==="
-        wget -q https://gcc.gnu.org/pub/gcc/infrastructure/zlib-1.2.11.tar.gz -O zlib-1.2.11.tar.gz
+        # Скачиваем оригинальный zlib-1.2.11 из вечного зеркала Buildroot через curl.
+        # Это гарантирует обход блокировок 415/403 и решит проблему 404.
+        echo "=== Скачивание стабильной копии zlib из репозитория Buildroot ==="
+        curl -L "https://sources.buildroot.net/zlib/zlib-1.2.11.tar.gz" -o zlib-1.2.11.tar.gz
         
         # Динамически находим скрипт сборки
         SCRIPT=$(find . -maxdepth 1 -type f \( -name "*.sh" -o -name "build*" \) | head -n 1)
