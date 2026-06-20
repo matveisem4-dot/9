@@ -17,7 +17,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /usr/local/xenon
-        key: ${{ runner.os }}-xenon-toolchain-light-v2
+        key: ${{ runner.os }}-xenon-toolchain-light-v3
 
     - name: Install Toolchain Build Dependencies
       if: steps.cache-toolchain.outputs.cache-hit != 'true'
@@ -45,29 +45,35 @@ jobs:
         sudo chown -R $USER:$GROUPS $XENON
         export PATH=$PATH:$XENON/bin
         
-        # 1. Собираем сам компилятор (GCC, Binutils, Newlib) — этот шаг стабилен
+        # 1. Собираем сам компилятор (GCC, Binutils, Newlib) — этот шаг теперь работает стабильно
         echo "=== Запуск сборки Toolchain ==="
         if ! "$SCRIPT" toolchain; then
           echo "❌ Ошибка при сборке toolchain!"
           exit 1
         fi
         
-        # Шаг "libs" (zlib, libpng) сознательно пропускаем, чтобы обойти ошибки скачивания файлов
+        # Шаг "libs" сознательно пропускаем во избежание проблем со скачиванием
         echo "=== Пропускаем сборку сторонних библиотек для стабильности ==="
         
-        # 2. Глобальный поиск и сборка конвертера elf2xex
+        # 2. Клонируем и собираем выделенный конвертер elf2xex из официального репозитория
         echo "=== Сборка конвертера elf2xex ==="
-        ELF2XEX_C=$(find "$ROOT_DIR" -name "elf2xex.c" | head -n 1)
+        cd "$ROOT_DIR"
+        git clone https://github.com/Free60Project/elf2xex.git
+        cd elf2xex
         
-        if [ -n "$ELF2XEX_C" ]; then
-          ELF2XEX_DIR=$(dirname "$ELF2XEX_C")
-          echo "✅ Исходный код elf2xex найден в папочке: $ELF2XEX_DIR"
-          cd "$ELF2XEX_DIR"
-          find . -type f -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+        # Компилируем утилиту (через Makefile, либо напрямую слинковав с системным zlib)
+        if [ -f Makefile ] || [ -f makefile ]; then
           make
-          cp elf2xex /usr/local/xenon/bin/
         else
-          echo "❌ Ошибка: Не удалось обнаружить файл elf2xex.c ни в одном из каталогов!"
+          gcc -O2 *.c -o elf2xex -lz 2>/dev/null || g++ -O2 *.cpp -o elf2xex -lz
+        fi
+        
+        # Проверяем успешность сборки и переносим бинарник в toolchain
+        if [ -f elf2xex ]; then
+          cp elf2xex /usr/local/xenon/bin/
+          echo "✅ Конвертер elf2xex успешно собран и установлен!"
+        else
+          echo "❌ Ошибка: Не удалось скомпилировать elf2xex!"
           exit 1
         fi
 
@@ -80,7 +86,7 @@ jobs:
 
     - name: Build Game ELF
       run: |
-        # Подключаем наш bare-metal компилятор Xbox 360
+        # Подключаем наш честный собранный bare-metal компилятор Xbox 360
         export XENON=/usr/local/xenon
         export PATH=$PATH:$XENON/bin
         
