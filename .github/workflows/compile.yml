@@ -12,16 +12,23 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
+    - name: Prepare Path for Makefile
+      run: |
+        # Создаем "зеркало" папки, чтобы Makefile думал, что GCC лежит в /usr/local/xenon
+        sudo mkdir -p /usr/local/xenon
+        sudo ln -s $GITHUB_WORKSPACE/toolchain/bin /usr/local/xenon/bin
+        sudo ln -s $GITHUB_WORKSPACE/toolchain/usr /usr/local/xenon/usr
+
     - name: Build Game
       run: |
-        # Добавляем твою папку с компилятором в PATH
-        export PATH=$PATH:$GITHUB_WORKSPACE/toolchain/bin
-        
-        # Запускаем сборку
+        # Теперь Makefile найдет компилятор по своим жестким путям
         make
         
-        # Если elf2xex тоже лежит в папке toolchain/bin, он просто сработает
-        elf2xex horse_game.elf default.xex
+        # Если elf2xex тоже нужен, сделай аналогично:
+        # cp toolchain/bin/elf2xex /usr/local/bin/elf2xex
+        
+        # Конвертация
+        /usr/local/xenon/bin/elf2xex horse_game.elf default.xex
 
     - name: Upload
       uses: actions/upload-artifact@v4
